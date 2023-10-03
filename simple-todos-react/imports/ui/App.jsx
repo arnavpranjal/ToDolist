@@ -1,49 +1,68 @@
 import React, { Fragment }  from 'react';
 import { useTracker } from 'meteor/react-meteor-data';
-import { TasksCollection } from '/imports/api/TasksCollection';
+import { TasksCollection } from '/imports/db/TasksCollection';
 import { Task } from './Task';
 import { TaskForm } from './TaskForm';
 import { useState } from 'react';
 import { LoginForm } from './LoginForm';
+import '/imports/api/tasksMethods';
+import { Meteor } from 'meteor/meteor';
 
 export const App = () => {
   const [hideCompleted, setHideCompleted] = useState(false);
   const user = useTracker(() => Meteor.user());
-  console.log(user);
+ 
   const hideCompletedFilter = { isChecked: { $ne: true } };
   const userFilter = user ? { userId: user._id } : {};
   const pendingOnlyFilter = { ...hideCompletedFilter, ...userFilter };
 
-  const tasks = useTracker(() => {
-  if (!user) {
-    return [];
+//   const tasks = useTracker(() => {
+//   if (!user) {
+//     return [];
+//   }
+//   return TasksCollection.find(
+//     hideCompleted ? pendingOnlyFilter : userFilter,
+//     {
+//       sort: { createdAt: -1 },
+//     }
+//   ).fetch();
+    
+// });
+//   const pendingTasksCount = useTracker(() => {
+//     if (!user) {
+//       return 0;
+//     }
+//   TasksCollection.find(hideCompletedFilter).count()
+//   });
+const { tasks, pendingTasksCount, isLoading } = useTracker(() => {
+  const noDataAvailable = { tasks: [], pendingTasksCount: 0 };
+  if (!Meteor.user()) {
+    return noDataAvailable;
   }
-  return TasksCollection.find(
+  const handler = Meteor.subscribe('tasks');
+
+  if (!handler.ready()) {
+    return { ...noDataAvailable, isLoading: true };
+  }
+
+  const tasks = TasksCollection.find(
     hideCompleted ? pendingOnlyFilter : userFilter,
     {
       sort: { createdAt: -1 },
     }
   ).fetch();
-    
-});
-  const pendingTasksCount = useTracker(() => {
-    if (!user) {
-      return 0;
-    }
-  TasksCollection.find(hideCompletedFilter).count()
-  });
+  const pendingTasksCount = TasksCollection.find(pendingOnlyFilter).count();
 
+  return { tasks, pendingTasksCount };
+});
 const pendingTasksTitle = `${
   pendingTasksCount ? ` (${pendingTasksCount})` : ''
 }`;
   const toggleChecked = ({ _id, isChecked }) => {
-    TasksCollection.update(_id, {
-      $set: {
-        isChecked: !isChecked
-      }
-    })};
+    Meteor.call('tasks.setIsChecked', _id, !isChecked)};
 
-   deleteTask = ({ _id }) => TasksCollection.remove(_id);
+
+   deleteTask = ({ _id }) =>Meteor.call('tasks.remove', _id);
    const logout = () => Meteor.logout();
   return (
     <div className='app'>
@@ -69,6 +88,7 @@ const pendingTasksTitle = `${
            {hideCompleted ? 'Show All' : 'Hide Completed'}
          </button>
        </div>
+       {isLoading && <div className="loading">loading...</div>}
       <ul className="tasks">
         { tasks.map(task => <Task key={ task._id } task={ task }  onCheckboxClick={toggleChecked} onDeleteClick={deleteTask} / >)}
       </ul>
